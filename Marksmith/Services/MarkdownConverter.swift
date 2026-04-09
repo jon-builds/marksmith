@@ -9,7 +9,7 @@ struct MarkdownConverter {
         var visitor = HTMLVisitor()
         let bodyHTML = visitor.visit(document)
         let fullHTML = wrapInHTMLDocument(bodyHTML, fontSize: fontSize)
-        let rtf = generateRTF(from: fullHTML)
+        let rtf = generateRTF(from: fullHTML, headings: visitor.headings)
         return (html: fullHTML, rtf: rtf)
     }
 
@@ -45,7 +45,7 @@ struct MarkdownConverter {
 
     // MARK: - RTF Generation
 
-    private func generateRTF(from html: String) -> Data? {
+    private func generateRTF(from html: String, headings: [HeadingInfo]) -> Data? {
         guard let htmlData = html.data(using: .utf8) else { return nil }
         guard let attrStr = NSAttributedString(
             html: htmlData,
@@ -53,14 +53,136 @@ struct MarkdownConverter {
                       .characterEncoding: String.Encoding.utf8.rawValue],
             documentAttributes: nil
         ) else { return nil }
-        return try? attrStr.data(
+        guard var rtfData = try? attrStr.data(
             from: NSRange(location: 0, length: attrStr.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        )
+        ) else { return nil }
+
+        if !headings.isEmpty {
+            rtfData = injectHeadingStyles(into: rtfData, headings: headings)
+        }
+        return rtfData
+    }
+
+    // MARK: - RTF Heading Style Injection
+
+    /// Post-process RTF data to add heading paragraph styles that Word/Pages recognize.
+    private func injectHeadingStyles(into rtfData: Data, headings: [HeadingInfo]) -> Data {
+        guard var rtfString = String(data: rtfData, encoding: .ascii)
+                ?? String(data: rtfData, encoding: .utf8) else {
+            return rtfData
+        }
+
+        rtfString = injectStylesheet(into: rtfString, headings: headings)
+        rtfString = markHeadingParagraphs(in: rtfString, headings: headings)
+
+        return rtfString.data(using: .ascii) ?? rtfString.data(using: .utf8) ?? rtfData
+    }
+
+    /// Insert heading style definitions into the RTF stylesheet group.
+    /// Creates the stylesheet if NSAttributedString didn't generate one.
+    private func injectStylesheet(into rtf: String, headings: [HeadingInfo]) -> String {
+        let usedLevels = Set(headings.map(\.level))
+
+        // RTF font sizes in half-points
+        let styleDefs: [(level: Int, name: String, fs: Int)] = [
+            (1, "Heading 1", 48), (2, "Heading 2", 36), (3, "Heading 3", 28),
+            (4, "Heading 4", 24), (5, "Heading 5", 22), (6, "Heading 6", 20)
+        ]
+
+        var styleEntries = ""
+        for def in styleDefs where usedLevels.contains(def.level) {
+            styleEntries += "{\\s\(def.level)\\sb240\\sa120\\b\\fs\(def.fs) \(def.name);}"
+        }
+
+        guard !styleEntries.isEmpty else { return rtf }
+
+        var result = rtf
+
+        if let stylesheetStart = result.range(of: "{\\stylesheet") {
+            // Stylesheet exists — find its closing brace and insert before it
+            var depth = 0
+            var endIndex = stylesheetStart.lowerBound
+            for idx in result[stylesheetStart.lowerBound...].indices {
+                let ch = result[idx]
+                if ch == "{" { depth += 1 }
+                else if ch == "}" {
+                    depth -= 1
+                    if depth == 0 { endIndex = idx; break }
+                }
+            }
+            result.insert(contentsOf: styleEntries, at: endIndex)
+        } else {
+            // No stylesheet — create one before the first \pard
+            let stylesheet = "{\\stylesheet{\\s0 Normal;}\(styleEntries)}"
+            if let pardRange = result.range(of: "\\pard") {
+                result.insert(contentsOf: "\n\(stylesheet)\n", at: pardRange.lowerBound)
+            }
+        }
+
+        return result
+    }
+
+    /// Add \sN paragraph style markers to heading paragraphs in RTF.
+    private func markHeadingParagraphs(in rtf: String, headings: [HeadingInfo]) -> String {
+        var result = rtf
+        var searchFrom = result.startIndex
+
+        for heading in headings {
+            let searchText = heading.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !searchText.isEmpty else { continue }
+
+            // Find the heading text in the RTF after our current search position
+            guard let textRange = result.range(of: searchText, range: searchFrom..<result.endIndex) else {
+                continue
+            }
+
+            // Scan backwards to find \pard as a complete control word (not inside \pardeftab etc.)
+            guard let pardRange = findPardBackwards(in: result, before: textRange.lowerBound) else {
+                continue
+            }
+
+            // Insert \sN right after \pard
+            let insertionPoint = pardRange.upperBound
+            let styleMarker = "\\s\(heading.level)"
+
+            let afterPard = result[insertionPoint...]
+            if !afterPard.hasPrefix(styleMarker) {
+                result.insert(contentsOf: styleMarker, at: insertionPoint)
+                // Advance search past this heading to handle duplicates correctly
+                let offset = result.distance(from: result.startIndex, to: insertionPoint) + styleMarker.count
+                searchFrom = result.index(result.startIndex, offsetBy: offset)
+            } else {
+                searchFrom = textRange.upperBound
+            }
+        }
+
+        return result
+    }
+
+    /// Find \pard as a complete RTF control word (not a prefix of \pardeftab etc.)
+    /// by scanning backwards from the given position.
+    private func findPardBackwards(in rtf: String, before end: String.Index) -> Range<String.Index>? {
+        var searchEnd = end
+        while let range = rtf[rtf.startIndex..<searchEnd].range(of: "\\pard", options: .backwards) {
+            // Check the character after \pard is not a lowercase letter
+            let afterPard = range.upperBound
+            if afterPard >= rtf.endIndex || !rtf[afterPard].isLowercase {
+                return range
+            }
+            // This \pard is part of a longer control word — keep searching
+            searchEnd = range.lowerBound
+        }
+        return nil
     }
 }
 
 // MARK: - HTMLVisitor
+
+private struct HeadingInfo {
+    let level: Int
+    let plainText: String
+}
 
 private struct HTMLVisitor: MarkupVisitor {
     typealias Result = String
@@ -70,6 +192,8 @@ private struct HTMLVisitor: MarkupVisitor {
     // Track column alignments from the current table
     private var columnAlignments: [Table.ColumnAlignment?] = []
     private var currentColumnIndex = 0
+    // Collected heading metadata for RTF post-processing
+    private(set) var headings: [HeadingInfo] = []
 
     // MARK: - Default
 
@@ -90,7 +214,8 @@ private struct HTMLVisitor: MarkupVisitor {
     mutating func visitHeading(_ heading: Heading) -> String {
         let level = heading.level
         let content = defaultVisit(heading)
-        return "<h\(level)>\(content)</h\(level)>\n"
+        headings.append(HeadingInfo(level: level, plainText: heading.plainText))
+        return "<h\(level) style=\"mso-style-name:'Heading \(level)'\">\(content)</h\(level)>\n"
     }
 
     mutating func visitParagraph(_ paragraph: Paragraph) -> String {

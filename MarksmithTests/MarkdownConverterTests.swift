@@ -11,7 +11,7 @@ final class MarkdownConverterTests: XCTestCase {
         for level in 1...6 {
             let hashes = String(repeating: "#", count: level)
             let result = converter.convert(markdown: "\(hashes) Heading \(level)")
-            XCTAssertTrue(result.html.contains("<h\(level)>"), "Expected <h\(level)> tag")
+            XCTAssertTrue(result.html.contains("<h\(level) "), "Expected <h\(level)> tag")
             XCTAssertTrue(result.html.contains("</h\(level)>"), "Expected </h\(level)> closing tag")
         }
     }
@@ -197,7 +197,7 @@ final class MarkdownConverterTests: XCTestCase {
         | A     | B     |
         """
         let result = converter.convert(markdown: markdown)
-        XCTAssertTrue(result.html.contains("<h1>"))
+        XCTAssertTrue(result.html.contains("<h1 "))
         XCTAssertTrue(result.html.contains("<strong>"))
         XCTAssertTrue(result.html.contains("<em>"))
         XCTAssertTrue(result.html.contains("<code>"))
@@ -213,7 +213,7 @@ final class MarkdownConverterTests: XCTestCase {
 
     func testHeadingContent() {
         let result = converter.convert(markdown: "# My Title")
-        XCTAssertTrue(result.html.contains("<h1>My Title</h1>"))
+        XCTAssertTrue(result.html.contains("My Title</h1>"))
     }
 
     func testNestedFormatting() {
@@ -244,5 +244,77 @@ final class MarkdownConverterTests: XCTestCase {
         // Two trailing spaces followed by newline create a hard line break
         let result = converter.convert(markdown: "Line one  \nLine two")
         XCTAssertTrue(result.html.contains("<br>"))
+    }
+
+    // MARK: - Heading Style Compatibility (Word/Pages)
+
+    func testHeadingHTMLContainsMsoStyleName() {
+        for level in 1...6 {
+            let hashes = String(repeating: "#", count: level)
+            let result = converter.convert(markdown: "\(hashes) Heading \(level)")
+            XCTAssertTrue(result.html.contains("mso-style-name:'Heading \(level)'"),
+                          "Expected mso-style-name for heading level \(level)")
+        }
+    }
+
+    func testRTFContainsHeadingStylesheet() {
+        let result = converter.convert(markdown: "# Title\n\nBody text")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("Heading 1"), "RTF stylesheet should contain Heading 1 definition")
+    }
+
+    func testRTFHeading1HasStyleMarker() {
+        let result = converter.convert(markdown: "# Title\n\nBody text")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\s1"), "RTF should contain \\s1 paragraph style marker")
+    }
+
+    func testRTFMultipleHeadingLevels() {
+        let result = converter.convert(markdown: "# H1\n\n## H2\n\n### H3\n\nBody")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("Heading 1"), "RTF stylesheet should contain Heading 1")
+        XCTAssertTrue(rtfString.contains("Heading 2"), "RTF stylesheet should contain Heading 2")
+        XCTAssertTrue(rtfString.contains("Heading 3"), "RTF stylesheet should contain Heading 3")
+        XCTAssertTrue(rtfString.contains("\\s1"), "RTF should contain \\s1 marker")
+        XCTAssertTrue(rtfString.contains("\\s2"), "RTF should contain \\s2 marker")
+        XCTAssertTrue(rtfString.contains("\\s3"), "RTF should contain \\s3 marker")
+    }
+
+    func testRTFHeadingWithInlineFormatting() {
+        let result = converter.convert(markdown: "# **Bold** heading")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\s1"), "RTF should contain \\s1 marker even with inline formatting")
+    }
+
+    func testRTFOnlyUsedLevelsInStylesheet() {
+        let result = converter.convert(markdown: "## Only H2\n\nBody")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("Heading 2"), "RTF stylesheet should contain Heading 2")
+        XCTAssertFalse(rtfString.contains("Heading 1"), "RTF stylesheet should NOT contain Heading 1 when unused")
+    }
+
+    func testRTFNonHeadingParagraphsUnchanged() {
+        let result = converter.convert(markdown: "# Heading\n\nRegular paragraph")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        // Find "Regular paragraph" and check the \pard before it does NOT have \s1
+        if let range = rtfString.range(of: "Regular paragraph") {
+            let before = rtfString[rtfString.startIndex..<range.lowerBound]
+            if let pardRange = before.range(of: "\\pard", options: .backwards) {
+                let afterPard = rtfString[pardRange.upperBound..<range.lowerBound]
+                XCTAssertFalse(afterPard.contains("\\s1"), "Non-heading paragraph should not have \\s1 marker")
+            }
+        }
+    }
+
+    func testRTFEmptyHeadingSkipped() {
+        // Empty heading should not crash
+        let result = converter.convert(markdown: "#\n\nBody text")
+        XCTAssertNotNil(result.rtf, "RTF should still be generated with empty heading")
+    }
+
+    func testHTMLHeadingTagsPreserved() {
+        let result = converter.convert(markdown: "# Title\n\n## Subtitle")
+        XCTAssertTrue(result.html.contains("<h1"), "HTML should still contain h1 tag")
+        XCTAssertTrue(result.html.contains("<h2"), "HTML should still contain h2 tag")
     }
 }

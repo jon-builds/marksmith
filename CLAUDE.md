@@ -10,7 +10,7 @@ Swift · SwiftUI · macOS 13+ · `swift-markdown` (SPM) · XcodeGen · Bundle ID
 
 > **Before every release commit**: bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `project.yml`, and update "Current version" below.
 
-**Current version**: 1.2.1 (build 4)
+**Current version**: 1.2.2 (build 5)
 
 **Versioning convention** (single source of truth: `project.yml`):
 
@@ -18,17 +18,17 @@ Two independent fields in `project.yml`:
 
 | Field | Current | Meaning |
 |---|---|---|
-| `MARKETING_VERSION` | `1.2.1` | User-visible version shown in About window and App Store |
-| `CURRENT_PROJECT_VERSION` | `4` | Build number — monotonically increasing integer, never resets |
+| `MARKETING_VERSION` | `1.2.2` | User-visible version shown in About window and App Store |
+| `CURRENT_PROJECT_VERSION` | `5` | Build number — monotonically increasing integer, never resets |
 
 **When to bump what:**
 
 | Release type | `MARKETING_VERSION` | `CURRENT_PROJECT_VERSION` | Example |
 |---|---|---|---|
-| Bug fix | Increment patch | +1 | 1.2.1 → 1.2.2, build 5 |
-| New feature | Increment minor, reset patch | +1 | 1.2.1 → 1.3.0, build 5 |
-| Major / monetization | Increment major, reset minor+patch | +1 | 1.2.1 → 2.0.0, build 5 |
-| Beta / hotfix build | No change | +1 | 1.2.1 build 4 → 1.2.1 build 5 |
+| Bug fix | Increment patch | +1 | 1.2.2 → 1.2.3, build 6 |
+| New feature | Increment minor, reset patch | +1 | 1.2.2 → 1.3.0, build 6 |
+| Major / monetization | Increment major, reset minor+patch | +1 | 1.2.2 → 2.0.0, build 6 |
+| Beta / hotfix build | No change | +1 | 1.2.2 build 5 → 1.2.2 build 6 |
 
 **Rules:**
 - `CURRENT_PROJECT_VERSION` always increments for every release build — never resets, never repeats
@@ -53,7 +53,7 @@ Two independent fields in `project.yml`:
 |---------|-------------|
 | `xcodegen generate` | Generate `.xcodeproj` from `project.yml` |
 | `xcodebuild build -project Marksmith.xcodeproj -scheme Marksmith` | Build the app |
-| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 77 unit tests |
+| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 86 unit tests |
 | `xcodebuild test -only-testing:MarksmithTests/MarkdownDetectorTests` | Run a single test class |
 | `./Scripts/build-release.sh` | Build and package unsigned DMG |
 | `SIGN=1 ./Scripts/build-release.sh` | Build signed DMG (requires Developer ID) |
@@ -84,7 +84,7 @@ Marksmith/
 - `App/AppDelegate.swift` — Creates and manages `ClipboardMonitor` lifecycle
 - `Services/ClipboardMonitor.swift` — Timer-based polling with guard pipeline, `hasSemanticHTML()` to skip rich clipboard from browsers while allowing code editor HTML, `[weak self]` timer, `.common` RunLoop mode, optional `UNUserNotificationCenter` conversion notifications
 - `Services/MarkdownDetector.swift` — 15 pre-compiled `NSRegularExpression` patterns with weighted scoring, `.anchorsMatchLines` for `^`/`$` anchors
-- `Services/MarkdownConverter.swift` — `HTMLVisitor` conforming to `MarkupVisitor` (22 visit methods), CSS styling, configurable `fontSize` parameter, RTF via `NSAttributedString`
+- `Services/MarkdownConverter.swift` — `HTMLVisitor` conforming to `MarkupVisitor` (22 visit methods), CSS styling, configurable `fontSize` parameter, RTF via `NSAttributedString` with heading paragraph style injection for Word/Pages compatibility
 - `Services/ClipboardWriter.swift` — Multi-format `NSPasteboardItem` write with self-marker
 - `Views/MenuBarView.swift` — Toggle, conversion status, Send Feedback, Settings button, quit with keyboard shortcuts
 - `Views/SettingsView.swift` — Sidebar navigation with General (enable, login, RTF, notifications, font size), Detection (sensitivity slider), and Support (Buy Me a Coffee, Report a Bug, Request a Feature links) tabs
@@ -202,13 +202,16 @@ static let licenseValidationTimeout: TimeInterval // 15
 - **Timer RunLoop mode** — must add timer to `.common` mode via `RunLoop.current.add(timer!, forMode: .common)` so it fires even while menus are open
 - **`@MainActor` access from Timer** — Timer callback runs on main thread but isn't annotated `@MainActor`; use `Task { @MainActor in ... }` for AppState mutations
 - **Contact email lives in multiple places** — `Constants.swift` (`feedbackEmail`), `SECURITY.md`, and GitHub release notes (`gh release view <tag>`). Update all when changing email.
+- **Word/Pages heading styles** — `NSAttributedString(html:) → RTF` loses semantic heading info (produces bold+size, not paragraph styles). RTF is post-processed to inject `\sN` stylesheet entries and paragraph markers. HTML headings include `mso-style-name` for Word's HTML import path. Both fixes needed since Word ignores plain `<h1>` tags in both formats.
+- **Pages ignores NSPasteboardItem** — Apple Pages (and possibly other Apple apps) do not read RTF/HTML written via `NSPasteboardItem` + `writeObjects()`. Must use `declareTypes(_:owner:)` + `setString/setData` instead. Discovered via user testing — no Apple documentation explains this behavior.
+- **Pasteboard type ordering** — `declareTypes` treats the first type as "most preferred". RTF must come before plain text so Pages/Word prefer rich text over raw markdown. Order: `.rtf` → `.html` → `.string` → `.markdownPasteMarker`.
 
 ## Testing
 
-77 tests across 4 test files:
+86 tests across 4 test files:
 
 - `MarkdownDetectorTests` (31 tests) — positive (all GFM patterns), negative (plain text, URLs, emails), edge cases (empty, whitespace, threshold boundary, score capping, zero threshold)
-- `MarkdownConverterTests` (29 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML
+- `MarkdownConverterTests` (38 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML, RTF heading style injection (stylesheet + paragraph markers), Word/Pages mso-style-name compatibility
 - `ClipboardWriterTests` (12 tests) — all pasteboard types written, RTF conditional, marker always present, content integrity, clearing old content
 - `MarkdownPerformanceTests` (5 tests) — detector and converter timing with typical and large fixtures, size guard assertion
 
@@ -218,7 +221,7 @@ static let licenseValidationTimeout: TimeInterval // 15
 
 ## Distribution Strategy
 
-**Current (v1.2.1)**: Unsigned DMG via GitHub Releases. Recipients bypass Gatekeeper via System Settings → Privacy & Security → Security → Open Anyway on first launch.
+**Current (v1.2.2)**: Unsigned DMG via GitHub Releases. Recipients bypass Gatekeeper via System Settings → Privacy & Security → Security → Open Anyway on first launch.
 
 **Future (v2.0)**: Source-available under FSL (Functional Source License, converts to MIT after 2 years). Signed+notarized DMG via Apple Developer Program. 14-day free trial with full lockout on expiry. One-time lifetime unlock ($9-15 USD) via LemonSqueezy/Gumroad — web checkout → license key → API validation → local cache.
 
