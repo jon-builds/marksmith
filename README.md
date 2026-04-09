@@ -1,6 +1,6 @@
 # Marksmith
 
-[![CI](https://github.com/jonc102/marksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/jonc102/marksmith/actions/workflows/ci.yml)
+[![CI](https://github.com/jon-builds/marksmith/actions/workflows/ci.yml/badge.svg)](https://github.com/jon-builds/marksmith/actions/workflows/ci.yml)
 
 A lightweight macOS menu bar utility that automatically converts Markdown on your clipboard to rich text, so pasting into Slack, Telegram, Notes, and other apps "just works" with formatting.
 
@@ -34,7 +34,7 @@ Marksmith sits in your menu bar and watches the clipboard. When it detects Markd
 
 ## Installation
 
-1. Download the latest `.dmg` from [GitHub Releases](https://github.com/jonc102/marksmith/releases/latest).
+1. Download the latest `.dmg` from [GitHub Releases](https://github.com/jon-builds/marksmith/releases/latest).
 2. Open the `.dmg` and drag **Marksmith** to your Applications folder.
 3. On first launch, macOS will block the app because it's unsigned. Go to **System Settings → Privacy & Security → Security** and click **Open Anyway** next to the Marksmith blocked message. After the first launch, double-clicking works normally.
 
@@ -241,7 +241,7 @@ xcodebuild build -project Marksmith.xcodeproj -scheme Marksmith
 xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith
 ```
 
-75 unit tests cover the detection engine, Markdown-to-HTML converter, clipboard writer, and performance benchmarks.
+86 unit tests cover the detection engine, Markdown-to-HTML converter, clipboard writer, and performance benchmarks.
 
 ### Release
 
