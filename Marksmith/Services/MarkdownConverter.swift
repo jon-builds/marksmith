@@ -92,7 +92,8 @@ struct MarkdownConverter {
 
         var styleEntries = ""
         for def in styleDefs where usedLevels.contains(def.level) {
-            styleEntries += "{\\s\(def.level)\\sb240\\sa120\\b\\fs\(def.fs) \(def.name);}"
+            let outlineLevel = def.level - 1
+            styleEntries += "{\\s\(def.level)\\sb240\\sa60\\keepn\\outlinelevel\(outlineLevel)\\b\\fs\(def.fs)\\sbasedon0\\snext0 \(def.name);}"
         }
 
         guard !styleEntries.isEmpty else { return rtf }
@@ -142,12 +143,17 @@ struct MarkdownConverter {
                 continue
             }
 
-            // Insert \sN right after \pard
+            // Insert \sN and paragraph properties right after \pard.
+            // Word desktop applies paragraph properties directly on paste
+            // (not via style lookup), so we restate outline level + keepn
+            // at paragraph level for the Styles pane to report "Heading N".
             let insertionPoint = pardRange.upperBound
-            let styleMarker = "\\s\(heading.level)"
+            let outlineLevel = heading.level - 1
+            let styleMarker = "\\s\(heading.level)\\keepn\\outlinelevel\(outlineLevel)\\sb240\\sa60"
+            let sentinel = "\\s\(heading.level)"
 
             let afterPard = result[insertionPoint...]
-            if !afterPard.hasPrefix(styleMarker) {
+            if !afterPard.hasPrefix(sentinel) {
                 result.insert(contentsOf: styleMarker, at: insertionPoint)
                 // Advance search past this heading to handle duplicates correctly
                 let offset = result.distance(from: result.startIndex, to: insertionPoint) + styleMarker.count

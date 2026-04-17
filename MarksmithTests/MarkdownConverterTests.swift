@@ -317,4 +317,51 @@ final class MarkdownConverterTests: XCTestCase {
         XCTAssertTrue(result.html.contains("<h1"), "HTML should still contain h1 tag")
         XCTAssertTrue(result.html.contains("<h2"), "HTML should still contain h2 tag")
     }
+
+    // MARK: - Word-desktop recognition control words (v1.2.3)
+
+    func testRTFStylesheetContainsOutlineLevels() {
+        let markdown = (1...6).map { String(repeating: "#", count: $0) + " Heading \($0)" }.joined(separator: "\n\n")
+        let result = converter.convert(markdown: markdown)
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        for level in 1...6 {
+            let expected = "\\outlinelevel\(level - 1)"
+            XCTAssertTrue(rtfString.contains(expected),
+                          "RTF should contain \(expected) for Heading \(level)")
+        }
+    }
+
+    func testRTFStylesheetContainsSbasedonAndSnext() {
+        let result = converter.convert(markdown: "# H1")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\sbasedon0"),
+                      "Heading stylesheet entry should declare \\sbasedon0")
+        XCTAssertTrue(rtfString.contains("\\snext0"),
+                      "Heading stylesheet entry should declare \\snext0")
+    }
+
+    func testRTFStylesheetContainsKeepn() {
+        let result = converter.convert(markdown: "# H1")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\keepn"),
+                      "Heading stylesheet entry should include \\keepn")
+    }
+
+    func testRTFHeadingParagraphRestatesOutlineLevel() {
+        let result = converter.convert(markdown: "## Heading 2 body")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        // Paragraph marker should include \s2\keepn\outlinelevel1 — Word reads
+        // paragraph properties directly on paste, so we restate them.
+        XCTAssertTrue(rtfString.contains("\\s2\\keepn\\outlinelevel1\\sb240\\sa60"),
+                      "Heading paragraph marker should restate outline level + keepn + spacing")
+    }
+
+    func testRTFOnlyUsedOutlineLevelsEmitted() {
+        let result = converter.convert(markdown: "### H3 only\n\nBody")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\outlinelevel2"),
+                      "Used H3 should emit \\outlinelevel2")
+        XCTAssertFalse(rtfString.contains("\\outlinelevel0"),
+                       "Unused H1 should NOT emit \\outlinelevel0 in stylesheet")
+    }
 }

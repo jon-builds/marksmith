@@ -10,7 +10,7 @@ Swift · SwiftUI · macOS 13+ · `swift-markdown` (SPM) · XcodeGen · Bundle ID
 
 > **Before every release commit**: bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `project.yml`, and update "Current version" below.
 
-**Current version**: 1.2.2 (build 5)
+**Current version**: 1.2.3 (build 6)
 
 **Versioning convention** (single source of truth: `project.yml`):
 
@@ -18,8 +18,8 @@ Two independent fields in `project.yml`:
 
 | Field | Current | Meaning |
 |---|---|---|
-| `MARKETING_VERSION` | `1.2.2` | User-visible version shown in About window and App Store |
-| `CURRENT_PROJECT_VERSION` | `5` | Build number — monotonically increasing integer, never resets |
+| `MARKETING_VERSION` | `1.2.3` | User-visible version shown in About window and App Store |
+| `CURRENT_PROJECT_VERSION` | `6` | Build number — monotonically increasing integer, never resets |
 
 **When to bump what:**
 
@@ -53,7 +53,7 @@ Two independent fields in `project.yml`:
 |---------|-------------|
 | `xcodegen generate` | Generate `.xcodeproj` from `project.yml` |
 | `xcodebuild build -project Marksmith.xcodeproj -scheme Marksmith` | Build the app |
-| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 86 unit tests |
+| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 91 unit tests |
 | `xcodebuild test -only-testing:MarksmithTests/MarkdownDetectorTests` | Run a single test class |
 | `./Scripts/build-release.sh` | Build and package unsigned DMG |
 | `SIGN=1 ./Scripts/build-release.sh` | Build signed DMG (requires Developer ID) |
@@ -69,7 +69,7 @@ Marksmith/
 │   ├── Services/      # ClipboardMonitor, MarkdownDetector, MarkdownConverter, ClipboardWriter
 │   ├── Utilities/     # Constants, PasteboardTypes (marker extension)
 │   └── Resources/     # Assets.xcassets, Info.plist
-├── MarksmithTests/  # 77 tests: detector (31), converter (27), writer (12), performance (5)
+├── MarksmithTests/  # 91 tests: detector (31), converter (43), writer (12), performance (5)
 ├── Scripts/             # build-release.sh, ExportOptions.plist, generate-icon.swift, generate-menubar-icon.swift
 ├── docs/                # PLAN.md, QA.md
 └── project.yml          # XcodeGen configuration
@@ -202,16 +202,16 @@ static let licenseValidationTimeout: TimeInterval // 15
 - **Timer RunLoop mode** — must add timer to `.common` mode via `RunLoop.current.add(timer!, forMode: .common)` so it fires even while menus are open
 - **`@MainActor` access from Timer** — Timer callback runs on main thread but isn't annotated `@MainActor`; use `Task { @MainActor in ... }` for AppState mutations
 - **Contact email lives in multiple places** — `Constants.swift` (`feedbackEmail`), `SECURITY.md`, and GitHub release notes (`gh release view <tag>`). Update all when changing email.
-- **Word/Pages heading styles** — `NSAttributedString(html:) → RTF` loses semantic heading info (produces bold+size, not paragraph styles). RTF is post-processed to inject `\sN` stylesheet entries and paragraph markers. HTML headings include `mso-style-name` for Word's HTML import path. Both fixes needed since Word ignores plain `<h1>` tags in both formats.
+- **Word/Pages heading styles** — `NSAttributedString(html:) → RTF` loses semantic heading info (produces bold+size, not paragraph styles). RTF is post-processed to inject full Word-compatible stylesheet entries (`\sN\sb240\sa60\keepn\outlinelevelN-1\b\fs…\sbasedon0\snext0 Heading N;`) and paragraph markers that restate the same outline level / `\keepn` / spacing (`\pard\sN\keepn\outlinelevelN-1\sb240\sa60`). Word desktop applies paragraph properties directly on paste, so the outline level MUST be restated at paragraph level, not just in the stylesheet — otherwise the Styles pane shows "Normal + bold" instead of "Heading N". HTML headings also include `mso-style-name` for Word Online's HTML import path.
 - **Pages ignores NSPasteboardItem** — Apple Pages (and possibly other Apple apps) do not read RTF/HTML written via `NSPasteboardItem` + `writeObjects()`. Must use `declareTypes(_:owner:)` + `setString/setData` instead. Discovered via user testing — no Apple documentation explains this behavior.
 - **Pasteboard type ordering** — `declareTypes` treats the first type as "most preferred". RTF must come before plain text so Pages/Word prefer rich text over raw markdown. Order: `.rtf` → `.html` → `.string` → `.markdownPasteMarker`.
 
 ## Testing
 
-86 tests across 4 test files:
+91 tests across 4 test files:
 
 - `MarkdownDetectorTests` (31 tests) — positive (all GFM patterns), negative (plain text, URLs, emails), edge cases (empty, whitespace, threshold boundary, score capping, zero threshold)
-- `MarkdownConverterTests` (38 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML, RTF heading style injection (stylesheet + paragraph markers), Word/Pages mso-style-name compatibility
+- `MarkdownConverterTests` (43 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML, RTF heading style injection (stylesheet + paragraph markers), Word/Pages mso-style-name compatibility, Word-desktop recognition control words (`\outlinelevel`, `\sbasedon0`, `\snext0`, `\keepn`, paragraph-level outline restatement)
 - `ClipboardWriterTests` (12 tests) — all pasteboard types written, RTF conditional, marker always present, content integrity, clearing old content
 - `MarkdownPerformanceTests` (5 tests) — detector and converter timing with typical and large fixtures, size guard assertion
 
