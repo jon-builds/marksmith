@@ -37,3 +37,6 @@ Package.resolved
 
 # Claude Code
 .claude/
+
+# Superpowers (local skill session artifacts)
+docs/superpowers/
