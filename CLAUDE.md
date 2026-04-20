@@ -18,8 +18,8 @@ Two independent fields in `project.yml`:
 
 | Field | Current | Meaning |
 |---|---|---|
-| `MARKETING_VERSION` | `1.2.3` | User-visible version shown in About window and App Store |
-| `CURRENT_PROJECT_VERSION` | `6` | Build number — monotonically increasing integer, never resets |
+| `MARKETING_VERSION` | `1.2.4` | User-visible version shown in About window and App Store |
+| `CURRENT_PROJECT_VERSION` | `7` | Build number — monotonically increasing integer, never resets |
 
 **When to bump what:**
 
@@ -69,7 +69,7 @@ Marksmith/
 │   ├── Services/      # ClipboardMonitor, MarkdownDetector, MarkdownConverter, ClipboardWriter
 │   ├── Utilities/     # Constants, PasteboardTypes (marker extension)
 │   └── Resources/     # Assets.xcassets, Info.plist
-├── MarksmithTests/  # 93 tests: detector (31), converter (45), writer (12), performance (5)
+├── MarksmithTests/  # 95 tests: detector (31), converter (47), writer (12), performance (5)
 ├── Scripts/             # build-release.sh, ExportOptions.plist, generate-icon.swift, generate-menubar-icon.swift
 ├── docs/                # PLAN.md, QA.md
 └── project.yml          # XcodeGen configuration

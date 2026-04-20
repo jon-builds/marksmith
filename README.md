@@ -241,7 +241,7 @@ xcodebuild build -project Marksmith.xcodeproj -scheme Marksmith
 xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith
 ```
 
-86 unit tests cover the detection engine, Markdown-to-HTML converter, clipboard writer, and performance benchmarks.
+95 unit tests cover the detection engine, Markdown-to-HTML converter, clipboard writer, and performance benchmarks.
 
 ### Release
 
