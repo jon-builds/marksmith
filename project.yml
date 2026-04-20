@@ -23,8 +23,8 @@ targets:
         INFOPLIST_FILE: Marksmith/Resources/Info.plist
         CODE_SIGN_ENTITLEMENTS: Marksmith/Marksmith.entitlements
         MACOSX_DEPLOYMENT_TARGET: "14.0"
-        MARKETING_VERSION: "1.2.3"
-        CURRENT_PROJECT_VERSION: "6"
+        MARKETING_VERSION: "1.2.4"
+        CURRENT_PROJECT_VERSION: "7"
         GENERATE_INFOPLIST_FILE: false
         CODE_SIGN_STYLE: Automatic
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"

@@ -19,10 +19,16 @@ struct MarkdownConverter {
         return """
         <!DOCTYPE html>
         <html>
-        <head><style>
+        <head>
+        <meta name="ProgId" content="Word.Document">
+        <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: \(fontSize)px; line-height: 1.6; color: #333; }
-        h1, h2, h3, h4, h5, h6 { margin-top: 1em; margin-bottom: 0.5em; font-weight: 600; }
-        h1 { font-size: 1.8em; } h2 { font-size: 1.5em; } h3 { font-size: 1.3em; }
+        h1 { mso-style-name: "Heading 1"; mso-style-next: Normal; mso-outline-level: 1; page-break-after: avoid; }
+        h2 { mso-style-name: "Heading 2"; mso-style-next: Normal; mso-outline-level: 2; page-break-after: avoid; }
+        h3 { mso-style-name: "Heading 3"; mso-style-next: Normal; mso-outline-level: 3; page-break-after: avoid; }
+        h4 { mso-style-name: "Heading 4"; mso-style-next: Normal; mso-outline-level: 4; page-break-after: avoid; }
+        h5 { mso-style-name: "Heading 5"; mso-style-next: Normal; mso-outline-level: 5; page-break-after: avoid; }
+        h6 { mso-style-name: "Heading 6"; mso-style-next: Normal; mso-outline-level: 6; page-break-after: avoid; }
         code { background-color: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-family: "SF Mono", Menlo, monospace; font-size: 0.9em; }
         pre { background-color: #f6f8fa; padding: 12px; border-radius: 6px; overflow-x: auto; }
         pre code { background: none; padding: 0; }
@@ -127,7 +133,10 @@ struct MarkdownConverter {
     /// Add \sN paragraph style markers to heading paragraphs in RTF.
     private func markHeadingParagraphs(in rtf: String, headings: [HeadingInfo]) -> String {
         var result = rtf
-        var searchFrom = result.startIndex
+        // Start search after the first \pard so heading plain text ("Heading 1")
+        // doesn't false-match the stylesheet's style-name entries we injected
+        // earlier ({\s1 ... Heading 1;}).
+        var searchFrom = result.range(of: "\\pard")?.lowerBound ?? result.startIndex
 
         for heading in headings {
             let searchText = heading.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -221,7 +230,7 @@ private struct HTMLVisitor: MarkupVisitor {
         let level = heading.level
         let content = defaultVisit(heading)
         headings.append(HeadingInfo(level: level, plainText: heading.plainText))
-        return "<h\(level) style=\"mso-style-name:'Heading \(level)'\">\(content)</h\(level)>\n"
+        return "<h\(level) style=\"mso-style-name:&quot;Heading \(level)&quot;;mso-outline-level:\(level)\">\(content)</h\(level)>\n"
     }
 
     mutating func visitParagraph(_ paragraph: Paragraph) -> String {

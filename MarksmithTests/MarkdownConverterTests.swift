@@ -159,7 +159,7 @@ final class MarkdownConverterTests: XCTestCase {
     func testHTMLIsFullDocument() {
         let result = converter.convert(markdown: "# Test")
         XCTAssertTrue(result.html.contains("<!DOCTYPE html>"))
-        XCTAssertTrue(result.html.contains("<html>"))
+        XCTAssertTrue(result.html.contains("<html"))
         XCTAssertTrue(result.html.contains("</html>"))
     }
 
@@ -252,12 +252,67 @@ final class MarkdownConverterTests: XCTestCase {
         for level in 1...6 {
             let hashes = String(repeating: "#", count: level)
             let result = converter.convert(markdown: "\(hashes) Heading \(level)")
-            XCTAssertTrue(result.html.contains("mso-style-name:'Heading \(level)'"),
+            XCTAssertTrue(result.html.contains("mso-style-name:&quot;Heading \(level)&quot;"),
                           "Expected mso-style-name for heading level \(level)")
         }
     }
 
-    func testRTFContainsHeadingStylesheet() {
+    func testHeadingHTMLContainsOutlineLevel() {
+        // Word's HTML clipboard parser uses mso-outline-level to bind <h1>–<h6>
+        // to the built-in Heading 1–6 paragraph styles. Without it, Word falls
+        // back to Normal + direct character formatting.
+        for level in 1...6 {
+            let hashes = String(repeating: "#", count: level)
+            let result = converter.convert(markdown: "\(hashes) Heading \(level)")
+            XCTAssertTrue(result.html.contains("mso-outline-level:\(level)"),
+                          "Expected mso-outline-level:\(level) for heading level \(level)")
+        }
+    }
+
+    func testHTMLStylesheetHeadingRulesOnlyContainMsoBindings() {
+        // Word's own HTML export styles h1..h6 via CSS rules that contain
+        // ONLY mso-* properties (+ page-break-after). Visual overrides like
+        // font-size, color, or margin in those rules prevent Word from
+        // binding <hN> to its built-in Heading paragraph style, AND would
+        // override Notion/Google Docs/Pages heading styles.
+        let result = converter.convert(markdown: "# Title")
+        let styleStart = result.html.range(of: "<style>")!.upperBound
+        let styleEnd = result.html.range(of: "</style>")!.lowerBound
+        let stylesheet = String(result.html[styleStart..<styleEnd])
+        for level in 1...6 {
+            // Grab the h<level> { ... } rule body.
+            guard let ruleRange = stylesheet.range(of: "h\(level) {") else {
+                XCTFail("Expected h\(level) CSS rule for Word heading binding")
+                continue
+            }
+            let afterOpen = ruleRange.upperBound
+            guard let closeBrace = stylesheet.range(of: "}", range: afterOpen..<stylesheet.endIndex) else {
+                XCTFail("Unterminated h\(level) rule")
+                continue
+            }
+            let ruleBody = String(stylesheet[afterOpen..<closeBrace.lowerBound])
+            for forbidden in ["font-size", "font-family", "font-weight", "color", "margin", "background", "line-height", "padding"] {
+                XCTAssertFalse(ruleBody.contains(forbidden),
+                               "h\(level) CSS rule must not contain visual override '\(forbidden)' — breaks Word binding and overrides Notion/GDoc styles. Found in: \(ruleBody)")
+            }
+        }
+    }
+
+    func testHTMLStylesheetContainsMsoHeadingBindings() {
+        // Word's own HTML export puts mso-outline-level inside the h1..h6
+        // CSS rule (not just inline on the element). This is the mechanism
+        // that binds <hN> to Word's built-in Heading N paragraph style.
+        let result = converter.convert(markdown: "# Title")
+        let styleStart = result.html.range(of: "<style>")!.upperBound
+        let styleEnd = result.html.range(of: "</style>")!.lowerBound
+        let stylesheet = String(result.html[styleStart..<styleEnd])
+        for level in 1...6 {
+            XCTAssertTrue(stylesheet.contains("mso-outline-level: \(level)"),
+                          "Stylesheet must bind h\(level) to Word Heading \(level) via mso-outline-level")
+        }
+    }
+
+func testRTFContainsHeadingStylesheet() {
         let result = converter.convert(markdown: "# Title\n\nBody text")
         let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
         XCTAssertTrue(rtfString.contains("Heading 1"), "RTF stylesheet should contain Heading 1 definition")
@@ -345,6 +400,17 @@ final class MarkdownConverterTests: XCTestCase {
         let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
         XCTAssertTrue(rtfString.contains("\\keepn"),
                       "Heading stylesheet entry should include \\keepn")
+    }
+
+    func testRTFHeadingTextMatchingStyleNameStillGetsParagraphMarker() {
+        // Regression: when heading plain text equals the style name literally
+        // (e.g. "# Heading 1"), the RTF post-processor used to match the
+        // stylesheet entry's text first and skip paragraph marker insertion.
+        // Fix: start search after the first \pard (past the stylesheet block).
+        let result = converter.convert(markdown: "# Heading 1\n\n## Heading 2\n\nRegular paragraph with **bold** text.")
+        let rtfString = String(data: result.rtf!, encoding: .ascii) ?? String(data: result.rtf!, encoding: .utf8)!
+        XCTAssertTrue(rtfString.contains("\\s1\\keepn\\outlinelevel0\\sb240\\sa60"), "H1 paragraph marker missing when text matches style name")
+        XCTAssertTrue(rtfString.contains("\\s2\\keepn\\outlinelevel1\\sb240\\sa60"), "H2 paragraph marker missing when text matches style name")
     }
 
     func testRTFHeadingParagraphRestatesOutlineLevel() {

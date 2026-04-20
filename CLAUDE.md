@@ -10,7 +10,7 @@ Swift · SwiftUI · macOS 13+ · `swift-markdown` (SPM) · XcodeGen · Bundle ID
 
 > **Before every release commit**: bump `MARKETING_VERSION` + `CURRENT_PROJECT_VERSION` in `project.yml`, and update "Current version" below.
 
-**Current version**: 1.2.3 (build 6)
+**Current version**: 1.2.4 (build 7)
 
 **Versioning convention** (single source of truth: `project.yml`):
 
@@ -53,7 +53,7 @@ Two independent fields in `project.yml`:
 |---------|-------------|
 | `xcodegen generate` | Generate `.xcodeproj` from `project.yml` |
 | `xcodebuild build -project Marksmith.xcodeproj -scheme Marksmith` | Build the app |
-| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 91 unit tests |
+| `xcodebuild test -project Marksmith.xcodeproj -scheme Marksmith` | Run all 95 unit tests |
 | `xcodebuild test -only-testing:MarksmithTests/MarkdownDetectorTests` | Run a single test class |
 | `./Scripts/build-release.sh` | Build and package unsigned DMG |
 | `SIGN=1 ./Scripts/build-release.sh` | Build signed DMG (requires Developer ID) |
@@ -69,7 +69,7 @@ Marksmith/
 │   ├── Services/      # ClipboardMonitor, MarkdownDetector, MarkdownConverter, ClipboardWriter
 │   ├── Utilities/     # Constants, PasteboardTypes (marker extension)
 │   └── Resources/     # Assets.xcassets, Info.plist
-├── MarksmithTests/  # 91 tests: detector (31), converter (43), writer (12), performance (5)
+├── MarksmithTests/  # 93 tests: detector (31), converter (45), writer (12), performance (5)
 ├── Scripts/             # build-release.sh, ExportOptions.plist, generate-icon.swift, generate-menubar-icon.swift
 ├── docs/                # PLAN.md, QA.md
 └── project.yml          # XcodeGen configuration
@@ -203,15 +203,18 @@ static let licenseValidationTimeout: TimeInterval // 15
 - **`@MainActor` access from Timer** — Timer callback runs on main thread but isn't annotated `@MainActor`; use `Task { @MainActor in ... }` for AppState mutations
 - **Contact email lives in multiple places** — `Constants.swift` (`feedbackEmail`), `SECURITY.md`, and GitHub release notes (`gh release view <tag>`). Update all when changing email.
 - **Word/Pages heading styles** — `NSAttributedString(html:) → RTF` loses semantic heading info (produces bold+size, not paragraph styles). RTF is post-processed to inject full Word-compatible stylesheet entries (`\sN\sb240\sa60\keepn\outlinelevelN-1\b\fs…\sbasedon0\snext0 Heading N;`) and paragraph markers that restate the same outline level / `\keepn` / spacing (`\pard\sN\keepn\outlinelevelN-1\sb240\sa60`). Word desktop applies paragraph properties directly on paste, so the outline level MUST be restated at paragraph level, not just in the stylesheet — otherwise the Styles pane shows "Normal + bold" instead of "Heading N". HTML headings also include `mso-style-name` for Word Online's HTML import path.
+- **Word for Mac prefers HTML over RTF on paste** — even when RTF is declared first in `NSPasteboard.declareTypes`, Word for Mac reads the `.html` flavor. The RTF heading-style fix is therefore bypassed by Word (though Pages/TextEdit/Mail still use RTF). HTML must include three ingredients to bind to Word's built-in Heading paragraph styles: (a) a `<meta name="ProgId" content="Word.Document">` in `<head>` to trigger Word's Office HTML import path; (b) CSS rules targeting `h1..h6` in the embedded `<style>` block containing **only** `mso-*` properties and `page-break-after` (no visual overrides like `font-size`, `font-family`, `font-weight`, `color`, `margin` — Word treats those as direct overrides that defeat style binding, and they would also override Notion/Google Docs heading styles); (c) inline `style="mso-style-name:&quot;Heading N&quot;;mso-outline-level:N"` on each `<hN>` element. Double-quoted `mso-style-name` value (HTML-encoded as `&quot;`) matches Word's own HTML export format; single quotes are less reliably honored. **Do not add `xmlns:o`/`xmlns:w` namespaces on `<html>`** — Notion's paste handler treats HTML with Office namespaces as Word document output and falls back to plain text (which is raw markdown). `ProgId` alone is what Word keys on; `xmlns` was the Notion regression trigger, confirmed empirically 2026-04-20.
 - **Pages ignores NSPasteboardItem** — Apple Pages (and possibly other Apple apps) do not read RTF/HTML written via `NSPasteboardItem` + `writeObjects()`. Must use `declareTypes(_:owner:)` + `setString/setData` instead. Discovered via user testing — no Apple documentation explains this behavior.
+- **Pages heading-style binding is not achievable via clipboard** — Pages ignores RTF `\stylesheet` named styles on paste and applies only direct character formatting, so pasted H1/H2/H3 shows "Default*" in the Paragraph Styles panel despite visually looking correct (bold/sized/spaced). Pages' native format uses UUID-keyed style refs (IWA protobuf) with no public mapping from RTF `\sN` or from HTML `<h1>`. No third-party markdown tool (Obsidian, Typora, Bear, iA Writer, Ulysses, Pandoc) has solved this via clipboard; only native `.pages` file export binds styles. Accepted limitation — the RTF `\stylesheet` + `\sN` paragraph markers we emit are load-bearing for Word desktop but inert-but-harmless for Pages. Do not pursue further RTF tweaks for Pages.
+- **RTF stylesheet text collides with heading plain-text search** — `markHeadingParagraphs` scans the RTF for each heading's plain text to inject `\sN\keepn\outlinelevelN-1` markers after `\pard`. If the injected stylesheet entry (`{\s1 … Heading 1;}`) contains the same literal text as the heading (e.g. user pastes `# Heading 1`), the text search matches the stylesheet occurrence first, finds no `\pard` before it, and skips paragraph-marker insertion. Fix: start the search from the first `\pard` in the RTF, which is always after the stylesheet block. Regression-guarded by `testRTFHeadingTextMatchingStyleNameStillGetsParagraphMarker`.
 - **Pasteboard type ordering** — `declareTypes` treats the first type as "most preferred". RTF must come before plain text so Pages/Word prefer rich text over raw markdown. Order: `.rtf` → `.html` → `.string` → `.markdownPasteMarker`.
 
 ## Testing
 
-91 tests across 4 test files:
+95 tests across 4 test files:
 
 - `MarkdownDetectorTests` (31 tests) — positive (all GFM patterns), negative (plain text, URLs, emails), edge cases (empty, whitespace, threshold boundary, score capping, zero threshold)
-- `MarkdownConverterTests` (43 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML, RTF heading style injection (stylesheet + paragraph markers), Word/Pages mso-style-name compatibility, Word-desktop recognition control words (`\outlinelevel`, `\sbasedon0`, `\snext0`, `\keepn`, paragraph-level outline restatement)
+- `MarkdownConverterTests` (47 tests) — all GFM elements produce correct HTML tags, RTF data is non-nil, HTML entities escaped, CSS styling present, full document structure, XSS prevention in code blocks and raw HTML, RTF heading style injection (stylesheet + paragraph markers), Word/Pages `mso-style-name` compatibility, Word-desktop recognition control words (`\outlinelevel`, `\sbasedon0`, `\snext0`, `\keepn`, paragraph-level outline restatement), Word for Mac HTML heading binding via h1..h6 CSS `mso-*` bindings (`mso-style-next`, `mso-outline-level`) with no visual overrides, RTF stylesheet-text-collision regression guard
 - `ClipboardWriterTests` (12 tests) — all pasteboard types written, RTF conditional, marker always present, content integrity, clearing old content
 - `MarkdownPerformanceTests` (5 tests) — detector and converter timing with typical and large fixtures, size guard assertion
 
